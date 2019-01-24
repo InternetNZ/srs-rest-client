@@ -33,7 +33,7 @@ Usage: `rac ACTION OPTIONS`. Run `rac help` to see available
 actions.
 
 Each action has a help message that shows all the possible options for that
-action and brielf, what they do. Run `rac help ACTION` to see that help, eg:
+action and brief, what they do. Run `rac help ACTION` to see that help, eg:
 
 ```sh
 rac help availability

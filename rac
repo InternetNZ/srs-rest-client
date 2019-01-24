@@ -121,9 +121,9 @@ def parse_arguments():
 
         # global
         if option == 'server':
-            arguments['rest_server'] = getopt.argument(True)
+            arguments['server_name'] = getopt.argument(True)
         elif option == 'certificate':
-            arguments['rest_certificate'] = getopt.argument(True)
+            arguments['certificate'] = getopt.argument(True)
         elif option == 'timeout':
             arguments['timeout'] = int(getopt.argument(True, r'^(?x) [0-9]+ $'))
         elif option == 'json':
@@ -155,24 +155,24 @@ def parse_arguments():
 
 def check_arguments(action, arguments):
     if 'server' not in arguments:
-        arguments['rest_server'] = os.environ.get('REST_SERVER')
+        arguments['server_name'] = os.environ.get('REST_SERVER')
 
-        if arguments['rest_server'] is None:
+        if arguments['server_name'] is None:
             raise ArgumentError('No --server specified')
 
     if 'certificate' not in arguments:
-        arguments['rest_certificate'] = os.environ.get('REST_CERTIFICATE')
+        arguments['certificate'] = os.environ.get('REST_CERTIFICATE')
 
-        if arguments['rest_certificate'] is None:
-            arguments['rest_certificate'] = PARENT_DIR + '/' + REST_CERTFICIATE
+        if arguments['certificate'] is None:
+            arguments['certificate'] = PARENT_DIR + '/' + REST_CERTFICIATE
     
     if action == 'availability':
         if 'domain_names' not in arguments and 'search' not in arguments:
             raise ArgumentError('You must specify either --domain or --search')
         
 
-def check_availability(rest_server, rest_certificate, domain_names, search, timeout, output_json):
-    response = requests.get('https://' + rest_server + '/1.0/availability', verify = rest_certificate, headers = {'User-Agent': 'rac/0.1'}, data = {'domains[]': domain_names, 'string': search}, timeout = timeout)
+def check_availability(server_name, certificate, domain_names, search, timeout, output_json):
+    response = requests.get('https://' + server_name + '/1.0/availability', verify = certificate, headers = {'User-Agent': 'rac/0.1'}, data = {'domains[]': domain_names, 'string': search}, timeout = timeout)
     response.raise_for_status()
 
     if response.headers['Content-Type'] != 'application/json; charset=utf-8':
@@ -191,8 +191,8 @@ def check_availability(rest_server, rest_certificate, domain_names, search, time
         print('{} is {}'.format(domain_name, status))
 
 
-def get_droplist(rest_server, rest_certificate, timeout, output_json):
-    response = requests.get('https://' + rest_server + '/1.0/droplist', verify = rest_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = timeout)
+def get_droplist(server_name, certificate, timeout, output_json):
+    response = requests.get('https://' + server_name + '/1.0/droplist', verify = certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = timeout)
     response.raise_for_status()
 
     if response.headers['Content-Type'] != 'application/json; charset=utf-8':
@@ -292,8 +292,8 @@ def main():
 
     check_arguments(action, arguments)
 
-    rest_server = arguments['rest_server']
-    rest_certificate = arguments['rest_certificate']
+    server_name = arguments['server_name']
+    certificate = arguments['certificate']
     
     timeout = arguments['timeout'] if 'timeout' in arguments else 300
     output_json = True if 'output_json' in arguments else False
@@ -302,9 +302,9 @@ def main():
         domain_names = arguments['domain_names'] if 'domain_names' in arguments else []
         search = arguments['search'] if 'search' in arguments else ''
 
-        check_availability(rest_server, rest_certificate, domain_names, search, timeout, output_json)
+        check_availability(server_name, certificate, domain_names, search, timeout, output_json)
     elif action == 'droplist':
-        get_droplist(rest_server, rest_certificate, timeout, output_json)
+        get_droplist(server_name, certificate, timeout, output_json)
 
 
 if __name__ == '__main__':
