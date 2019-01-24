@@ -33,7 +33,7 @@ Usage: `rac ACTION OPTIONS`. Run `rac help` to see available
 actions.
 
 Each action has a help message that shows all the possible options for that
-action and brielf, what they do. Run `btf help ACTION` to see that help, eg:
+action and brielf, what they do. Run `rac help ACTION` to see that help, eg:
 
 ```sh
 rac help availability
@@ -52,7 +52,7 @@ It takes either a list of domains or a prefix to check against all available sec
 level domains.
 
 ```sh
-btf availability
+rac availability
   --server test.srs.net.nz
   --domain example.co.nz
 ```
@@ -60,7 +60,7 @@ btf availability
 To search against all available second level domains use `--search`.
 
 ```sh
-btf availability
+rac availability
   --server test.srs.net.nz
   --search example
 ```
@@ -68,6 +68,6 @@ btf availability
 Fetch the list of soon to be released domain names.
 
 ```sh
-btf droplist
+rac droplist
   --server test.srs.net.nz
 ```
