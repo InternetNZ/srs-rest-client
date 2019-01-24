@@ -1,0 +1,320 @@
+#!/usr/bin/python3
+#
+# Copyright 2018-2019 InternetNZ Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+import sys
+import os
+import re
+import requests
+import json
+from urllib.parse import parse_qsl
+import traceback
+
+
+PARENT_DIR = os.path.dirname(sys.argv[0])
+
+REST_SERVER      = 'srs.srs.net.nz'
+REST_CERTIFICATE = 'registry/srs-root-ca.pem'
+
+
+class ArgumentError(Exception):
+    pass
+
+
+class InternalError(Exception):
+    pass
+
+
+class GetOptions():
+    def __init__(self, arguments, program = None):
+        self.last_option = program or 'first'
+        self.arguments = arguments
+
+    def option(self, allowed = None):
+        if not len(self.arguments):
+            return None
+
+        option = self.arguments[0]
+
+        if option[0:2] != '--':
+            raise ArgumentError('Non-option \'{}\' found'.format(option))
+
+        option = option[2:]
+
+        if allowed is not None and option not in allowed:
+            return None
+
+        self.arguments.pop(0)
+        self.last_option = option
+
+        return option
+
+    def argument(self, required, pattern = None):
+        if len(self.arguments):
+            argument = self.arguments[0]
+        else:
+            argument = None
+
+        if argument is None or argument[0:2] == '--':
+            if required:
+                raise ArgumentError('Option --{} requires an argument'.format(self.last_option))
+
+            return None
+
+        if pattern and not re.search(pattern, argument):
+            raise ArgumentError('Invalid --{} argument: {}'.format(self.last_option, argument))
+
+        self.arguments.pop(0)
+        
+        return argument
+
+
+def parse_arguments():
+    arguments = {}
+
+    getopt = GetOptions(sys.argv[1:], program = os.path.basename(sys.argv[0]))
+    action = getopt.argument(False)
+
+    if action not in ('availability', 'droplist', 'help', 'version'):
+        raise ArgumentError('Invalid action, run \'{} help\' to see list of available actions'.format(sys.argv[0]))
+
+    if action in ('help', 'version'):
+        if action == 'help':
+            argument = getopt.argument(False)
+
+            if argument is not None:
+                action = re.sub(r'-', '_', argument)
+
+        return 'help', {action: True}
+
+    while True:
+        option = getopt.option()
+
+        if option is None:
+            break
+
+        # global
+        if option == 'server':
+            arguments['rest_server'] = getopt.argument(True)
+        elif option == 'certificate':
+            arguments['rest_certificate'] = getopt.argument(True)
+        elif option == 'timeout':
+            arguments['timeout'] = int(getopt.argument(True, r'^(?x) [0-9]+ $'))
+        elif option == 'json':
+            arguments['output_json'] = True
+
+        # availability
+        elif option in 'domain':
+            arguments['domain_names'] = []
+            required = True
+                
+            while True:
+                argument = getopt.argument(required, r'(?ix) ^ [a-z0-9āēīōū\.\-]+ $')
+
+                if argument is None:
+                    break
+
+                arguments['domain_names'].append(str(argument.encode('idna'), 'utf-8'))
+                required = False
+                
+        elif option == 'search':
+            argument = getopt.argument(True,  r'(?ix) ^ [a-z0-9āēīōū-]+ $')
+            arguments['search'] = str(argument.encode('idna'), 'utf-8')
+           
+        else:
+            raise ArgumentError('Unknown option \'{}\' found'.format(option))
+
+    return action, arguments
+
+
+def check_arguments(action, arguments):
+    if 'server' not in arguments:
+        arguments['rest_server'] = os.environ.get('REST_SERVER')
+
+        if arguments['rest_server'] is None:
+            raise ArgumentError('No --server specified')
+
+    if 'certificate' not in arguments:
+        arguments['rest_certificate'] = os.environ.get('REST_CERTIFICATE')
+
+        if arguments['rest_certificate'] is None:
+            arguments['rest_certificate'] = PARENT_DIR + '/' + REST_CERTFICIATE
+    
+    if action == 'availability':
+        if 'domain_names' not in arguments and 'search' not in arguments:
+            raise ArgumentError('You must specify either --domain or --search')
+        
+
+def check_availability(rest_server, rest_certificate, domain_names, search, timeout, output_json):
+    response = requests.get('https://' + rest_server + '/1.0/availability', verify = rest_certificate, headers = {'User-Agent': 'rac/0.1'}, data = {'domains[]': domain_names, 'string': search}, timeout = timeout)
+    response.raise_for_status()
+
+    if response.headers['Content-Type'] != 'application/json; charset=utf-8':
+        raise InternalError('Wrong content type: {}'.format(response.headers['Content-Type']))
+
+    availability_list = json.loads(response.text)
+
+    if output_json:
+        print(json.dumps(availability_list, sort_keys = False, indent = 4))
+        return
+
+    for availability in availability_list:
+        domain_name = bytes(availability['domain'], 'utf-8').decode('idna')
+        status = availability['status']
+        
+        print('{} is {}'.format(domain_name, status))
+
+
+def get_droplist(rest_server, rest_certificate, timeout, output_json):
+    response = requests.get('https://' + rest_server + '/1.0/droplist', verify = rest_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = timeout)
+    response.raise_for_status()
+
+    if response.headers['Content-Type'] != 'application/json; charset=utf-8':
+        raise InternalError('Wrong content type: {}'.format(response.headers['Content-Type']))
+
+    drop_list = json.loads(response.text)
+
+    if output_json:
+        print(json.dumps(drop_list, sort_keys = False, indent = 4))
+        return
+
+    for drop in drop_list:
+        domain_name = bytes(drop['domain'], 'utf-8').decode('idna')
+        registered_date = drop['registered']
+        cancelled_date = drop['cancel_date']
+        release_date = drop['drop_date']
+        
+        print('{}\n  Registered on {}\n  Cancelled on {}\n  Released after {}'.format(domain_name, registered_date, cancelled_date, release_date))
+    
+        
+def main():
+    action, arguments = parse_arguments()
+
+    if action == 'help':
+        if 'help' in arguments:
+            print('rac ACTION [OPTIONS]\n'
+                  '\n'
+                  'Check the availability of a domain or the droplist using the REST API.\n',
+                  '\n'
+                  'Action is one of the following:\n'
+                  '\n'
+                  '  availability droplist help version\n'
+                  '\n'
+                  'Global options are:\n'
+                  '\n'
+                  '  --certificate FILE               File containing the registry SSL certificate\n'
+                  '  --server HOSTNAME                Hostname of the server running the REST API\n'
+                  '  --timeout SECONDS                Number of seconds to wait for a response\n'
+                  '\n'
+                  'Environment variables that are the defaults for options are:\n'
+                  '\n'
+                  '  REST_SERVER                      --server\n'
+                  '  REST_CERTIFICATE                 --certificate\n'
+                  '\n'
+                  'The \'help\' action will display this message.\n'
+                  '\n'
+                  'Run \'rac help ACTION\' to see which options are available for that action. The options\n'
+                  'shown in the example command line are required.\n')
+        elif 'version' in arguments:
+            print('rac version 0.1\n'
+                  '\n'
+                  'Copyright 2019 Internet New Zealand Inc.\n'
+                  'All rights reserved.\n'
+                  '\n'
+                  'Redistribution and use in source and binary forms, with or without\n'
+                  'modification, are permitted provided that the following conditions are met:\n'
+                  '\n'
+                  '1. Redistributions of source code must retain the above copyright notice, this\n'
+                  '   list of conditions and the following disclaimer.\n'
+                  '\n'
+                  '2. Redistributions in binary form must reproduce the above copyright notice,\n'
+                  '   this list of conditions and the following disclaimer in the documentation\n'
+                  '   and/or other materials provided with the distribution.\n'
+                  '\n'
+                  '3. Neither the name of the copyright holder nor the names of its\n'
+                  '   contributors may be used to endorse or promote products derived from\n'
+                  '   this software without specific prior written permission.\n'
+                  '\n'
+                  'THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"\n'
+                  'AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\n'
+                  'IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n'
+                  'DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\n'
+                  'FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\n'
+                  'DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\n'
+                  'SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\n'
+                  'CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\n'
+                  'OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\n'
+                  'OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n')
+        elif 'availability' in arguments:
+            print('Check the availability of a domain name.\n'
+                  '\n'
+                  'rac availability [OPTIONS]\n'
+                  '\n'
+                  '  --domain NAME [NAME]*            Domain name to check\n'
+                  '  --search NAME                    Check availability of domain in all 2LDs\n'
+                  '  --json                           Output results in JSON format\n')
+        elif 'droplist' in arguments:
+            print('Get the list of soon to be released domains.\n'
+                  '\n'
+                  'rac droplist [OPTIONS]\n'
+                  '\n'
+                  '   --json                          Output results in JSON format\n')
+        else:
+            print('Sorry, no help avilable for that action.')
+
+        return
+
+    check_arguments(action, arguments)
+
+    rest_server = arguments['rest_server']
+    rest_certificate = arguments['rest_certificate']
+    
+    timeout = arguments['timeout'] if 'timeout' in arguments else 300
+    output_json = True if 'output_json' in arguments else False
+    
+    if action == 'availability':
+        domain_names = arguments['domain_names'] if 'domain_names' in arguments else []
+        search = arguments['search'] if 'search' in arguments else ''
+
+        check_availability(rest_server, rest_certificate, domain_names, search, timeout, output_json)
+    elif action == 'droplist':
+        get_droplist(rest_server, rest_certificate, timeout, output_json)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ArgumentError, InternalError) as error:
+        print(error, file = sys.stderr)
+        exit(1)
+    except Exception:
+        traceback.print_exc(file = sys.stderr)
+        exit(1)
+
+    exit(0)
