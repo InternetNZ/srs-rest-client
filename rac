@@ -161,7 +161,7 @@ def check_arguments(action, arguments):
             raise ArgumentError('No --server specified')
 
     if 'server_certificate' not in arguments:
-        arguments['certificate'] = os.environ.get('REST_CERTIFICATE')
+        arguments['server_certificate'] = os.environ.get('REST_CERTIFICATE')
 
         if arguments['server_certificate'] is None:
             arguments['server_certificate'] = PARENT_DIR + '/' + REST_CERTFICIATE
