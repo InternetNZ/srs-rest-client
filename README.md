@@ -26,6 +26,14 @@ The following environment variables can be used:
 * `REST_CERTIFICATE` SSL CA certificate that authenticates the HTTPS
   connection, used when `--certificate` is not specified.
 
+KEYS
+----
+
+The following keys are in the `registry/` directory:
+
+* `srs-root-ca.pem` The SSL CA certificate used to authenticate the SSL
+  connection.
+
 USAGE
 -----
 
