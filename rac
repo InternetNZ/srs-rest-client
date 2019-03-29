@@ -31,7 +31,8 @@
 import sys
 import os
 import re
-import requests
+import types
+import requests as http_request
 import json
 from urllib.parse import parse_qsl
 import traceback
@@ -52,8 +53,8 @@ class InternalError(Exception):
 
 
 class GetOptions():
-    def __init__(self, arguments, program = None):
-        self.last_option = program or 'first'
+    def __init__(self, arguments):
+        self.last_option = None
         self.arguments = arguments
 
     def option(self, allowed = None):
@@ -83,22 +84,28 @@ class GetOptions():
 
         if argument is None or argument[0:2] == '--':
             if required:
-                raise ArgumentError('Option --{} requires an argument'.format(self.last_option))
+                if self.last_option:
+                    raise ArgumentError('Option --{} requires an argument'.format(self.last_option))
+
+                raise ArgumentError('An argument is required')
 
             return None
 
         if pattern and not re.search(pattern, argument):
-            raise ArgumentError('Invalid --{} argument: {}'.format(self.last_option, argument))
+            if self.last_option:
+                raise ArgumentError('Invalid --{} argument: {}'.format(self.last_option, argument))
+
+            raise ArgumentError('Invalid first argument')
 
         self.arguments.pop(0)
-        
+
         return argument
 
 
 def parse_arguments():
     arguments = {}
 
-    getopt = GetOptions(sys.argv[1:], program = os.path.basename(sys.argv[0]))
+    getopt = GetOptions(sys.argv[1:])
     action = getopt.argument(False)
 
     if action not in ('availability', 'droplist', 'help', 'version'):
@@ -164,23 +171,23 @@ def check_arguments(action, arguments):
         arguments['server_certificate'] = os.environ.get('REST_CERTIFICATE')
 
         if arguments['server_certificate'] is None:
-            arguments['server_certificate'] = PARENT_DIR + '/' + REST_CERTIFICIATE
-    
+            arguments['server_certificate'] = PARENT_DIR + '/' + REST_CERTIFICATE
+
     if action == 'availability':
         if 'domain_names' not in arguments and 'search' not in arguments:
             raise ArgumentError('You must specify either --domain or --search')
         
 
-def check_availability(server_hostname, server_certificate, domain_names, search, timeout, output_json):
-    response = requests.get('https://' + server_hostname + '/1.0/availability', verify = server_certificate, headers = {'User-Agent': 'rac/0.1'}, data = {'domains[]': domain_names, 'string': search}, timeout = timeout)
-    response.raise_for_status()
+def check_availability(options, domain_names, search):
+    http_response = http_request.get('https://' + options.server_hostname + '/1.0/availability', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.2'}, data = {'domains[]': domain_names, 'string': search}, timeout = options.timeout)
+    http_response.raise_for_status()
 
-    if response.headers['Content-Type'] != 'application/json; charset=utf-8':
-        raise InternalError('Wrong content type: {}'.format(response.headers['Content-Type']))
+    if http_response.headers['Content-Type'] != 'application/json; charset=utf-8':
+        raise InternalError('Wrong content type: {}'.format(http_response.headers['Content-Type']))
 
-    availability_list = json.loads(response.text)
+    availability_list = json.loads(http_response.text)
 
-    if output_json:
+    if options.output_json:
         print(json.dumps(availability_list, sort_keys = False, indent = 4))
         return
 
@@ -191,16 +198,16 @@ def check_availability(server_hostname, server_certificate, domain_names, search
         print('{} is {}'.format(domain_name, status))
 
 
-def get_droplist(server_hostname, server_certificate, timeout, output_json):
-    response = requests.get('https://' + server_hostname + '/1.0/droplist', verify = server_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = timeout)
-    response.raise_for_status()
+def get_droplist(options):
+    http_response = http_request.get('https://' + options.server_hostname + '/1.0/droplist', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = options.timeout)
+    http_response.raise_for_status()
 
-    if response.headers['Content-Type'] != 'application/json; charset=utf-8':
-        raise InternalError('Wrong content type: {}'.format(response.headers['Content-Type']))
+    if http_response.headers['Content-Type'] != 'application/json; charset=utf-8':
+        raise InternalError('Wrong content type: {}'.format(http_response.headers['Content-Type']))
 
-    drop_list = json.loads(response.text)
+    drop_list = json.loads(http_response.text)
 
-    if output_json:
+    if options.output_json:
         print(json.dumps(drop_list, sort_keys = False, indent = 4))
         return
 
@@ -292,19 +299,21 @@ def main():
 
     check_arguments(action, arguments)
 
-    server_hostname = arguments['server_hostname']
-    server_certificate = arguments['server_certificate']
-    
-    timeout = arguments['timeout'] if 'timeout' in arguments else 300
-    output_json = True if 'output_json' in arguments else False
+    options = types.SimpleNamespace()
+
+    options.server_hostname = arguments['server_hostname']
+    options.server_certificate = arguments['server_certificate']
+
+    options.timeout = arguments['timeout'] if 'timeout' in arguments else 300
+    options.output_json = True if 'output_json' in arguments else False
     
     if action == 'availability':
         domain_names = arguments['domain_names'] if 'domain_names' in arguments else None 
         search = arguments['search'] if 'search' in arguments else None 
 
-        check_availability(server_hostname, server_certificate, domain_names, search, timeout, output_json)
+        check_availability(options, domain_names, search)
     elif action == 'droplist':
-        get_droplist(server_hostname, server_certificate, timeout, output_json)
+        get_droplist(options)
 
 
 if __name__ == '__main__':
