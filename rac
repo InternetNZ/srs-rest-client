@@ -38,10 +38,8 @@ from urllib.parse import parse_qsl
 import traceback
 
 
-PARENT_DIR = os.path.dirname(sys.argv[0])
-
-REST_SERVER      = 'srs.srs.net.nz'
-REST_CERTIFICATE = 'registry/srs-root-ca.pem'
+parent_dir = os.path.dirname(sys.argv[0])
+rest_certificate = 'registry/srs-root-ca.pem'
 
 
 class ArgumentError(Exception):
@@ -165,13 +163,13 @@ def check_arguments(action, arguments):
         arguments['server_hostname'] = os.environ.get('REST_SERVER')
 
         if arguments['server_hostname'] is None:
-            arguments['server_hostname'] = REST_SERVER
+            raise ArgumentError('No --server specified')
 
     if 'server_certificate' not in arguments:
         arguments['server_certificate'] = os.environ.get('REST_CERTIFICATE')
 
         if arguments['server_certificate'] is None:
-            arguments['server_certificate'] = PARENT_DIR + '/' + REST_CERTIFICATE
+            arguments['server_certificate'] = parent_dir + '/' + rest_certificate
 
     if action == 'availability':
         if 'domain_names' not in arguments and 'search' not in arguments:
@@ -179,7 +177,22 @@ def check_arguments(action, arguments):
         
 
 def check_availability(options, domain_names, search):
-    http_response = http_request.get('https://' + options.server_hostname + '/1.0/availability', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.2'}, data = {'domains[]': domain_names, 'string': search}, timeout = options.timeout)
+    try:
+        http_response = http_request.get('https://' + options.server_hostname + '/1.0/availability', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.2'}, data = {'domains[]': domain_names, 'string': search}, timeout = options.timeout)
+
+    except http_request.exceptions.SSLError as error:
+        reason = re.sub(r'(?x) ^ \[SSL: \  [A-Z_]+ \] \  (.*) \  \(_ssl.c: [0-9]+ \) $', r'\1', str(error.args[0].reason.args[0]))
+
+        raise InternalError('SSL: ' + reason)
+
+    except http_request.exceptions.Timeout as error:
+        raise InternalError('HTTP request timed-out')
+
+    except http_request.exceptions.ConnectionError as error:
+        reason = re.sub(r'(?x) ^ < [^:]+ > : \ ', r'', str(error.args[0].reason.args[0]))
+
+        raise InternalError(reason)
+
     http_response.raise_for_status()
 
     if http_response.headers['Content-Type'] != 'application/json; charset=utf-8':
@@ -199,7 +212,22 @@ def check_availability(options, domain_names, search):
 
 
 def get_droplist(options):
-    http_response = http_request.get('https://' + options.server_hostname + '/1.0/droplist', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = options.timeout)
+    try:
+        http_response = http_request.get('https://' + options.server_hostname + '/1.0/droplist', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = options.timeout)
+
+    except http_request.exceptions.SSLError as error:
+        reason = re.sub(r'(?x) ^ \[SSL: \  [A-Z_]+ \] \  (.*) \  \(_ssl.c: [0-9]+ \) $', r'\1', str(error.args[0].reason.args[0]))
+
+        raise InternalError('SSL: ' + reason)
+
+    except http_request.exceptions.Timeout as error:
+        raise InternalError('HTTP request timed-out')
+
+    except http_request.exceptions.ConnectionError as error:
+        reason = re.sub(r'(?x) ^ < [^:]+ > : \ ', r'', str(error.args[0].reason.args[0]))
+
+        raise InternalError(reason)
+
     http_response.raise_for_status()
 
     if http_response.headers['Content-Type'] != 'application/json; charset=utf-8':
@@ -249,7 +277,7 @@ def main():
                   'Run \'rac help ACTION\' to see which options are available for that action. The options\n'
                   'shown in the example command line are required.\n')
         elif 'version' in arguments:
-            print('rac version 0.1\n'
+            print('rac version 0.2\n'
                   '\n'
                   'Copyright 2019 Internet New Zealand Inc.\n'
                   'All rights reserved.\n'
@@ -281,7 +309,7 @@ def main():
         elif 'availability' in arguments:
             print('Check the availability of a domain name.\n'
                   '\n'
-                  'rac availability [OPTIONS]\n'
+                  'rac availability {--domain NAME [NAME]* | --search NAME} [OPTIONS]\n'
                   '\n'
                   '  --domain NAME [NAME]*            Domain name to check\n'
                   '  --search NAME                    Check availability of domain in all 2LDs\n'
