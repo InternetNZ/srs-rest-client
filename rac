@@ -114,9 +114,9 @@ def parse_arguments():
             argument = getopt.argument(False)
 
             if argument is not None:
-                action = re.sub(r'-', '_', argument)
+                action = argument
 
-        return 'help', {action: True}
+        return 'help', {'help': action}
 
     while True:
         option = getopt.option()
@@ -252,7 +252,7 @@ def main():
     action, arguments = parse_arguments()
 
     if action == 'help':
-        if 'help' in arguments:
+        if arguments['help'] == 'help':
             print('rac ACTION [OPTIONS]\n'
                   '\n'
                   'Check the availability of a domain or the droplist using the REST API.\n',
@@ -276,7 +276,7 @@ def main():
                   '\n'
                   'Run \'rac help ACTION\' to see which options are available for that action. The options\n'
                   'shown in the example command line are required.\n')
-        elif 'version' in arguments:
+        elif arguments['help'] == 'version':
             print('rac version 0.2\n'
                   '\n'
                   'Copyright 2019 Internet New Zealand Inc.\n'
@@ -306,7 +306,7 @@ def main():
                   'CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\n'
                   'OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\n'
                   'OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n')
-        elif 'availability' in arguments:
+        elif arguments['help'] == 'availability':
             print('Check the availability of a domain name.\n'
                   '\n'
                   'rac availability {--domain NAME [NAME]* | --search NAME} [OPTIONS]\n'
@@ -314,7 +314,7 @@ def main():
                   '  --domain NAME [NAME]*            Domain name to check\n'
                   '  --search NAME                    Check availability of domain in all 2LDs\n'
                   '  --json                           Output results in JSON format\n')
-        elif 'droplist' in arguments:
+        elif arguments['help'] == 'droplist':
             print('Get the list of soon to be released domains.\n'
                   '\n'
                   'rac droplist [OPTIONS]\n'
