@@ -61,7 +61,7 @@ level domains.
 
 ```sh
 rac availability
-  --server test.srs.net.nz
+  --server avail.test.srs.net.nz
   --domain example.co.nz
 ```
 
@@ -69,7 +69,7 @@ To search against all available second level domains use `--search`.
 
 ```sh
 rac availability
-  --server test.srs.net.nz
+  --server avail.test.srs.net.nz
   --search example
 ```
 
@@ -77,5 +77,5 @@ Fetch the list of soon to be released domain names.
 
 ```sh
 rac droplist
-  --server test.srs.net.nz
+  --server avail.test.srs.net.nz
 ```
