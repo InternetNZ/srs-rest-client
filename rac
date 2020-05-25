@@ -213,7 +213,7 @@ def check_availability(options, domain_names, search):
 
 def get_droplist(options):
     try:
-        http_response = http_request.get('https://' + options.server_hostname + '/1.0/droplist', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.1'}, timeout = options.timeout)
+        http_response = http_request.get('https://' + options.server_hostname + '/1.0/droplist', verify = options.server_certificate, headers = {'User-Agent': 'rac/0.2'}, timeout = options.timeout)
 
     except http_request.exceptions.SSLError as error:
         reason = re.sub(r'(?x) ^ \[SSL: \  [A-Z_]+ \] \  (.*) \  \(_ssl.c: [0-9]+ \) $', r'\1', str(error.args[0].reason.args[0]))
